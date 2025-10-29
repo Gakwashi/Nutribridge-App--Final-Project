@@ -1,0 +1,166 @@
+// pages/api/recipes/generate.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import { supabase } from '@/lib/supabase';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+// Initialize Gemini only if API key exists
+const genAI = process.env.GOOGLE_GEMINI_API_KEY 
+  ? new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY)
+  : null;
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    // Verify authentication
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { ingredients, condition, region, ageGroup } = req.body;
+
+    console.log('🔵 Generating recipes for:', ingredients);
+
+    if (!ingredients || ingredients.length === 0) {
+      return res.status(400).json({ error: 'Ingredients are required' });
+    }
+
+    // Generate recipes using Gemini AI or fallback
+    const recipes = await generateRecipes(ingredients, condition, region, ageGroup);
+
+    // Track free recipe usage for non-premium users
+    try {
+      // You can add logic here to track free recipe usage
+      console.log('🔵 Recipe generation completed');
+    } catch (dbError) {
+      console.error('Database error:', dbError);
+      // Don't fail the request if tracking fails
+    }
+
+    res.status(200).json({ 
+      success: true,
+      recipes: recipes
+    });
+
+  } catch (error: any) {
+    console.error('🔴 Recipe generation error:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate recipes',
+      details: error.message 
+    });
+  }
+}
+
+async function generateRecipes(ingredients: string[], condition: string, region: string, ageGroup: string) {
+  // If Gemini is not configured, use enhanced fallback
+  if (!genAI) {
+    console.log('🔵 Gemini not configured, using enhanced fallback recipes');
+    return getEnhancedFallbackRecipes(ingredients, condition, region, ageGroup);
+  }
+
+  const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+
+  const prompt = `
+Create 2 unique, detailed, and culturally appropriate recipes using primarily these ingredients: ${ingredients.join(', ')}.
+
+Context:
+- Health considerations: ${condition || 'General health'}
+- Cultural preference: ${region || 'Universal'} 
+- Age group: ${ageGroup}
+
+For each recipe, provide EXACTLY this JSON format:
+[
+  {
+    "name": "Creative and descriptive recipe name",
+    "ingredients": ["specific ingredient 1", "specific ingredient 2", "specific ingredient 3", "specific ingredient 4", "seasoning", "cooking oil"],
+    "preparation": "Detailed, step-by-step cooking instructions with specific techniques, temperatures, and times. Make it clear and easy to follow.",
+    "healthBenefit": "Specific health benefits explaining how this recipe supports ${condition || 'overall health'}",
+    "portion": "Realistic serving size",
+    "cookingTime": "Accurate time estimate",
+    "difficulty": "Easy/Medium/Hard"
+  },
+  {
+    "name": "Another creative and descriptive recipe name", 
+    "ingredients": ["specific ingredient 1", "specific ingredient 2", "specific ingredient 3", "specific ingredient 4", "seasoning", "cooking oil"],
+    "preparation": "Detailed, step-by-step cooking instructions with specific techniques, temperatures, and times. Make it clear and easy to follow.",
+    "healthBenefit": "Specific health benefits explaining how this recipe supports ${condition || 'overall health'}",
+    "portion": "Realistic serving size",
+    "cookingTime": "Accurate time estimate",
+    "difficulty": "Easy/Medium/Hard"
+  }
+]
+
+IMPORTANT: 
+- Use primarily the provided ingredients but add common pantry items
+- Make recipes culturally appropriate for ${region || 'various cultures'}
+- Consider ${ageGroup} nutritional needs
+- Return ONLY the JSON array, no other text
+`;
+
+  try {
+    console.log('🔵 Calling Gemini API...');
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().trim();
+    
+    console.log('🔵 Gemini raw response length:', text.length);
+    
+    // Clean and parse JSON response
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const recipes = JSON.parse(jsonMatch[0]);
+      console.log('✅ AI recipes generated successfully');
+      return recipes;
+    } else {
+      console.error('🔴 No valid JSON found in Gemini response');
+      throw new Error('AI returned invalid format');
+    }
+  } catch (error) {
+    console.error('🔴 Gemini API error:', error);
+    console.log('🔄 Falling back to enhanced recipes');
+    return getEnhancedFallbackRecipes(ingredients, condition, region, ageGroup);
+  }
+}
+
+function getEnhancedFallbackRecipes(ingredients: string[], condition: string, region: string, ageGroup: string) {
+  const mainIngredient = ingredients[0]?.toLowerCase() || 'ingredients';
+  const secondaryIngredients = ingredients.slice(1);
+  
+  return [
+    {
+      name: `Savory ${mainIngredient.charAt(0).toUpperCase() + mainIngredient.slice(1)} ${region ? region + ' ' : ''}Stir-Fry`,
+      ingredients: [
+        ...ingredients,
+        '2 tbsp cooking oil',
+        '2 cloves garlic, minced',
+        '1 onion, sliced',
+        'Salt and pepper to taste',
+        '1 tsp soy sauce or preferred seasoning'
+      ],
+      preparation: `1. Prepare all ingredients: wash and chop ${ingredients.join(', ')}\n2. Heat oil in a large pan or wok over medium-high heat\n3. Sauté garlic and onion until fragrant (1-2 minutes)\n4. Add ${mainIngredient} and stir-fry for 3-5 minutes until cooked\n5. Add ${secondaryIngredients.length > 0 ? secondaryIngredients.join(', ') : 'remaining ingredients'} and cook for another 2-3 minutes\n6. Season with salt, pepper, and soy sauce\n7. Stir well and serve hot with rice or bread`,
+      healthBenefit: `Rich in nutrients from fresh ${ingredients.join(', ')}. ${condition ? `Suitable for ${condition} with its balanced preparation.` : 'Provides essential vitamins and minerals for overall health.'} Perfect for ${ageGroup} nutritional needs.`,
+      portion: '2 servings',
+      cookingTime: '20 minutes',
+      difficulty: 'Easy'
+    },
+    {
+      name: `Hearty ${mainIngredient.charAt(0).toUpperCase() + mainIngredient.slice(1)} ${region ? region + ' ' : ''}Bowl`,
+      ingredients: [
+        ...ingredients,
+        '1 cup grains (rice, quinoa, or couscous)',
+        '2 cups vegetables (carrots, bell peppers, zucchini)',
+        '2 tbsp olive oil',
+        'Herbs and spices to taste',
+        'Lemon juice for serving'
+      ],
+      preparation: `1. Cook grains according to package instructions\n2. While grains cook, prepare ${ingredients.join(', ')} by washing and cutting\n3. Heat oil in a pan and sauté ${mainIngredient} until golden\n4. Add vegetables and cook until tender but crisp\n5. Combine cooked grains with ${mainIngredient} and vegetables\n6. Season with herbs, spices, and a squeeze of lemon juice\n7. Mix well and serve warm`,
+      healthBenefit: `Balanced meal with protein, fiber, and essential nutrients. ${condition ? `Thoughtfully prepared for ${condition} dietary considerations.` : 'Supports digestive health and provides sustained energy.'} Ideal for ${ageGroup} dietary requirements.`,
+      portion: '2 servings',
+      cookingTime: '25 minutes',
+      difficulty: 'Easy'
+    }
+  ];
+}

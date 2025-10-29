@@ -1,0 +1,19 @@
+{
+  "name": "nutribridge-server",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Backend for NutriBridge nutrition app",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "@supabase/supabase-js": "^2.38.0"
+  }
+}

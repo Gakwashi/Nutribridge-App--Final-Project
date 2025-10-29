@@ -1,0 +1,13 @@
+{
+  "/_app": "pages/_app.js",
+  "/_error": "pages/_error.js",
+  "/_document": "pages/_document.js",
+  "/recipes": "pages/recipes.js",
+  "/community": "pages/community.js",
+  "/api/auth/profile": "pages/api/auth/profile.js",
+  "/api/forum/posts/preview": "pages/api/forum/posts/preview.js",
+  "/api/blogs/featured": "pages/api/blogs/featured.js",
+  "/": "pages/index.js",
+  "/about": "pages/about.js",
+  "/api/recipes/history": "pages/api/recipes/history.js"
+}
