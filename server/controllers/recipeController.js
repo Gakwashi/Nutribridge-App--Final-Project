@@ -1,6 +1,20 @@
 import supabase from '../config/db.js';
 
-// Health conditions data remains the same
+export const upgradeToPremium = async (req, res) => {
+  const { error } = await supabase
+    .from('users')
+    .update({ is_premium: true })
+    .eq('id', userId);
+};
+
+export const getSubscriptionInfo = async (req, res) => {
+  const { data: user } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .single();
+};
+
 const HEALTH_CONDITIONS = {
   diabetes: {
     focus: 'blood sugar control',

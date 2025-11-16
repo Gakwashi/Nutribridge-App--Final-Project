@@ -1,12 +1,14 @@
-// pages/login.tsx
+// pages/login.tsx - UPDATED FIX
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -14,6 +16,7 @@ export default function Login() {
     setLoading(true);
     
     try {
+      console.log('🔐 Login attempt with:', { email });
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -21,14 +24,19 @@ export default function Login() {
       });
 
       const data = await response.json();
+      console.log('🔐 Login response:', { status: response.status, data });
       
       if (response.ok) {
-        localStorage.setItem('token', data.token);
+        console.log('🔐 Login successful, calling auth context login');
+        // Use the auth context login function
+        login(data.token, data.user);
+        // Redirect to home page
         router.push('/');
       } else {
         alert(data.error || 'Login failed');
       }
     } catch (error) {
+      console.error('🔐 Login error:', error);
       alert('Login failed. Please try again.');
     } finally {
       setLoading(false);

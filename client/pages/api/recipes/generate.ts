@@ -1,4 +1,4 @@
-// pages/api/recipes/generate.ts
+// pages/api/recipes/generate.ts - UPDATED WITH FREE RECIPE LIMIT
 import { NextApiRequest, NextApiResponse } from 'next';
 import { supabase } from '@/lib/supabase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -28,21 +28,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Ingredients are required' });
     }
 
+    // 🔥 NEW: Check free recipe limit before generating
+    const userCheck = await checkUserRecipeLimit(token);
+    if (!userCheck.allowed) {
+      return res.status(402).json({ 
+        error: userCheck.error || 'Free recipe limit reached',
+        user_status: userCheck.user_status
+      });
+    }
+
     // Generate recipes using Gemini AI or fallback
     const recipes = await generateRecipes(ingredients, condition, region, ageGroup);
 
-    // Track free recipe usage for non-premium users
+    // 🔥 NEW: Update user's recipe count after successful generation
     try {
-      // You can add logic here to track free recipe usage
-      console.log('🔵 Recipe generation completed');
+      await updateUserRecipeCount(token, userCheck.user_id);
+      console.log('🔵 Recipe count updated for user:', userCheck.user_id);
     } catch (dbError) {
-      console.error('Database error:', dbError);
+      console.error('Database error updating recipe count:', dbError);
       // Don't fail the request if tracking fails
     }
 
     res.status(200).json({ 
       success: true,
-      recipes: recipes
+      recipes: recipes,
+      user_status: {
+        free_recipes_used: (userCheck.user_status?.free_recipes_used || 0) + 1,
+        free_recipe_limit: userCheck.user_status?.free_recipe_limit || 2,
+        is_premium: userCheck.user_status?.is_premium || false
+      }
     });
 
   } catch (error: any) {
@@ -54,6 +68,122 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
+// 🔥 NEW: Function to check user's recipe limit
+async function checkUserRecipeLimit(token: string): Promise<{
+  allowed: boolean;
+  error?: string;
+  user_id?: string;
+  user_status?: any;
+}> {
+  try {
+    // Get user from Supabase using the token
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    
+    if (error || !user) {
+      console.error('🔴 Auth error:', error);
+      return { allowed: false, error: 'Invalid authentication' };
+    }
+
+    // Get user profile from your profiles table
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) {
+      console.error('🔴 Profile fetch error:', profileError);
+      // If no profile exists, create one with default limits
+      return { 
+        allowed: true, 
+        user_id: user.id,
+        user_status: {
+          free_recipes_used: 0,
+          free_recipe_limit: 2,
+          is_premium: false
+        }
+      };
+    }
+
+    // Check if user is premium or within free limit
+    const freeRecipesUsed = profile.free_recipes_used || 0;
+    const freeRecipeLimit = profile.free_recipe_limit || 2;
+    const isPremium = profile.is_premium || false;
+
+    console.log(`🔵 User ${user.id} recipe stats:`, {
+      freeRecipesUsed,
+      freeRecipeLimit,
+      isPremium,
+      allowed: isPremium || freeRecipesUsed < freeRecipeLimit
+    });
+
+    if (!isPremium && freeRecipesUsed >= freeRecipeLimit) {
+      return {
+        allowed: false,
+        error: `You have used all ${freeRecipeLimit} free recipes. Please upgrade to premium to generate more recipes.`,
+        user_id: user.id,
+        user_status: {
+          free_recipes_used: freeRecipesUsed,
+          free_recipe_limit: freeRecipeLimit,
+          is_premium: isPremium
+        }
+      };
+    }
+
+    return {
+      allowed: true,
+      user_id: user.id,
+      user_status: {
+        free_recipes_used: freeRecipesUsed,
+        free_recipe_limit: freeRecipeLimit,
+        is_premium: isPremium
+      }
+    };
+
+  } catch (error) {
+    console.error('🔴 Error checking user limit:', error);
+    // Allow generation if check fails (fail-open for better UX)
+    return { allowed: true };
+  }
+}
+
+// 🔥 NEW: Function to update user's recipe count
+async function updateUserRecipeCount(token: string, userId: string) {
+  try {
+    // Increment the free_recipes_used count in the profiles table
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('free_recipes_used, is_premium')
+      .eq('id', userId)
+      .single();
+
+    if (profileError) {
+      console.error('🔴 Profile fetch error:', profileError);
+      return;
+    }
+
+    // Only increment if user is not premium
+    if (!profile.is_premium) {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ 
+          free_recipes_used: (profile.free_recipes_used || 0) + 1,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+
+      if (updateError) {
+        console.error('🔴 Update recipe count error:', updateError);
+      } else {
+        console.log('✅ Recipe count updated for user:', userId);
+      }
+    }
+  } catch (error) {
+    console.error('🔴 Error updating recipe count:', error);
+  }
+}
+
+// Keep your existing generateRecipes and getEnhancedFallbackRecipes functions unchanged
 async function generateRecipes(ingredients: string[], condition: string, region: string, ageGroup: string) {
   // If Gemini is not configured, use enhanced fallback
   if (!genAI) {

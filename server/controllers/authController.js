@@ -6,12 +6,19 @@ export const register = async (req, res) => {
   try {
     const { email, password, name, region } = req.body;
 
+    console.log('Registration attempt for:', email);
+
     // Check if user exists
-    const { data: existingUser } = await supabase
+    const { data: existingUser, error: checkError } = await supabase
       .from('users')
       .select('*')
       .eq('email', email)
       .single();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Check user error:', checkError);
+      return res.status(500).json({ error: 'Database error' });
+    }
 
     if (existingUser) {
       return res.status(400).json({
@@ -23,12 +30,12 @@ export const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user
-    const { data: user, error } = await supabase
+    const { data: user, error: insertError } = await supabase
       .from('users')
       .insert([
         {
           email,
-          password: hashedPassword,
+          password_hash: hashedPassword, // Correct column name
           name,
           region,
           free_recipes_used: 0,
@@ -38,7 +45,10 @@ export const register = async (req, res) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (insertError) {
+      console.error('Insert user error:', insertError);
+      return res.status(500).json({ error: 'Failed to create user' });
+    }
 
     // Generate token
     const token = jwt.sign(
@@ -46,6 +56,8 @@ export const register = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    console.log('User registered successfully:', user.email);
 
     res.status(201).json({
       message: 'User registered successfully',
@@ -60,7 +72,8 @@ export const register = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Register error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -68,18 +81,34 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    console.log('Login attempt for:', email);
+
     const { data: user, error } = await supabase
       .from('users')
       .select('*')
       .eq('email', email)
       .single();
 
-    if (error || !user) {
+    if (error) {
+      console.error('Supabase error:', error);
+      // PGRST116 means no rows returned
+      if (error.code === 'PGRST116') {
+        return res.status(400).json({ error: 'Invalid credentials' });
+      }
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    if (!user) {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    console.log('User found, comparing password...');
+
+    // FIXED: Use password_hash instead of password
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    
     if (!isMatch) {
+      console.log('Password mismatch for user:', email);
       return res.status(400).json({ error: 'Invalid credentials' });
     }
 
@@ -88,6 +117,8 @@ export const login = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    console.log('Login successful for:', email);
 
     res.json({
       message: 'Login successful',
@@ -102,19 +133,29 @@ export const login = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
 export const getProfile = async (req, res) => {
   try {
+    console.log('Getting profile for user ID:', req.userId);
+
     const { data: user, error } = await supabase
       .from('users')
       .select('*')
       .eq('id', req.userId)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Profile fetch error:', error);
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
     res.json({
       user: {
@@ -127,6 +168,7 @@ export const getProfile = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Get profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 };

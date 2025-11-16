@@ -1,0 +1,50 @@
+# NutriBridge - AI-Powered Nutrition Platform
+
+NutriBridge is a comprehensive nutrition platform that provides personalized meal planning, recipe generation, and dietary guidance using artificial intelligence.
+
+## Features
+
+- **AI Recipe Generation**: Create personalized recipes based on dietary preferences and available ingredients
+- **Meal Planning**: Intelligent weekly meal plans tailored to your nutritional needs
+- **Multi-Currency Payments**: Support for Stripe (international) and M-Pesa (Kenya) payments
+- **Premium Subscriptions**: Tiered access with premium features for paid users
+- **Responsive Design**: Mobile-first approach for seamless user experience
+
+## Tech Stack
+
+### Frontend
+- **Next.js 14** - React framework with App Router
+- **TypeScript** - Type-safe development
+- **Tailwind CSS** - Utility-first styling
+- **Supabase** - Backend-as-a-Service
+
+### Backend
+- **Next.js API Routes** - Serverless functions
+- **Stripe** - Payment processing for card payments
+- **M-Pesa API** - Mobile money payments for East Africa
+- **JWT Authentication** - Secure user sessions
+
+### Database
+- **PostgreSQL** via Supabase
+- **Row Level Security** - Data protection
+
+## Installation
+
+
+
+
+
+## Payment Integration
+Stripe (International)
+Test card: 4242 4242 4242 4242
+
+Supports USD and other major currencies
+
+Secure checkout with Stripe Elements
+
+M-Pesa (Kenya)
+Sandbox testing available
+
+Real STK push notifications in production
+
+Kenyan Shilling (KES) support
