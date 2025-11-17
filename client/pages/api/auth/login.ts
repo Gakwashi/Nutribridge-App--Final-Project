@@ -1,12 +1,15 @@
 // pages/api/auth/login.ts
 import { NextApiRequest, NextApiResponse } from 'next';
-import { supabase } from '@/lib/supabase';
+import { getSupabase } from '@/lib/supabase'; // CHANGED: Import getSupabase instead of supabase
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // ADDED: Get supabase client at runtime
+  const supabase = getSupabase();
+  
   console.log(' === LOGIN API DEBUG START ===');
   console.log(' Request method:', req.method);
   console.log(' Request URL:', req.url);
